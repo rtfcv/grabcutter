@@ -61,6 +61,7 @@ class EntryVariable:
         self.pack = self.entry.pack
 
 
+
 class PyGrabCutter:
     def __init__(self, fname: Union[None, str]=None):
         self.imgPath = ''
@@ -87,10 +88,10 @@ class PyGrabCutter:
             text='Select File',
             command=self.selectImage
         )
-        self.loadDataButton = ttk.Button(
+        self.ResizeToWinButton = ttk.Button(
             self.frame1,
-            text='Load Data',
-            command=self.selectData
+            text='Resize to Window',
+            command=lambda: self.updateSize(None)
         )
 
         self.t2 = tkinter.StringVar(value='hoge')
@@ -120,6 +121,7 @@ class PyGrabCutter:
         self.label1.pack( side=tkinter.LEFT)
         self.fnameEntry.pack( side=tkinter.LEFT)
         self.button1.pack(side=tkinter.LEFT)
+        self.ResizeToWinButton.pack(side=tkinter.LEFT)
 
         self.modeButtonFrame.pack()
         self.modeManager.pack()
@@ -134,10 +136,14 @@ class PyGrabCutter:
 
         self.dataInterface = DataSaver(self)
 
+        self.root.geometry("1000x600")
+
         if fname is not None:
             self.root.update_idletasks()
             self.root.update()
             self.openImage(fname)
+        self.root.state('zoomed')
+        self.updateSize(None)
         self.root.mainloop()
 
     def openImage(self, fname:str):
@@ -145,6 +151,7 @@ class PyGrabCutter:
         self.afterImage.renderImg()
         self.beforeImage.LoadImage(fname)
         self.beforeImage.renderImg()
+        # self.root.bind("<Configure>", self.updateSize)
 
         assert self.beforeImage.cvimg is not None
         self.origImg = self.beforeImage.cvimg.copy()
@@ -176,6 +183,11 @@ class PyGrabCutter:
 
     def updateResult(self):
         return
+
+    def updateSize(self, event):
+        print(event)
+        self.afterImage.renderImg()
+        self.beforeImage.renderImg()
 
     def saveGeom(self):
         fname: str = filedialog.asksaveasfilename(
@@ -250,13 +262,15 @@ class PyGrabCutter:
 
 class ImgCanvas:
     def onClick(self, callback):
-        self.canvas.bind("<Button-1>", callback)
+        self.canvas.unbind_all('<Button-1>')
+        self.canvas.bind('<Button-1>', callback)
 
     def onRelease(self, callback):
-        self.canvas.bind("<Button-1>", callback)
+        self.canvas.bind('<Button-1>', callback)
 
     def onDrag(self, callback):
-        self.canvas.bind("<B1-Motion>", callback)
+        self.canvas.unbind_all('<B1-Motion>')
+        self.canvas.bind('<B1-Motion>', callback)
         
 
     def LoadImage(self, fname:str):
@@ -265,13 +279,23 @@ class ImgCanvas:
         # wierd color
         self.imgPath = fname
 
+    def InitWindowSize(self):
+        assert self.cvimg is not None
+
     def ScaleImage(self):
         assert self.cvimg is not None
         assert self.cvmask is not None
 
         self.screengeom = array([
-            self.root.root.winfo_screenwidth(), self.root.root.winfo_screenheight()
-        ], dtype=int) * 0.4
+            self.root.root.winfo_screenwidth()*0.5,
+            self.root.root.winfo_screenheight()
+        ], dtype=int) * 0.8
+        
+        self.screengeom = array([
+            self.root.root.winfo_height()*0.45,
+            self.root.root.winfo_width()*0.45
+            ], dtype=int)
+        self.sceengeom = array([self.canvas.winfo_width(), self.canvas.winfo_height()], dtype=int)
 
         self.igeom = self.cvimg.shape[1::-1]
         print(self.igeom)
@@ -316,7 +340,8 @@ class ImgCanvas:
             self.tag, text='({x}, {y})'.format(x=event.x, y=event.y))
 
     def pack(self) -> None:
-        return self.canvas.pack(side=tkinter.TOP)
+        # return self.canvas.pack(side=tkinter.TOP)
+        return self.canvas.pack(fill="both", expand=True)
 
     def __init__(self, name: str, root: PyGrabCutter, parent: ttk.Frame):
         self.name = name
