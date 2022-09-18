@@ -88,6 +88,11 @@ class PyGrabCutter:
             text='Select File',
             command=self.selectImage
         )
+        self.SaveImgButton = ttk.Button(
+            self.frame1,
+            text='Save Image',
+            command=self.saveImgOutput
+        )
         self.ResizeToWinButton = ttk.Button(
             self.frame1,
             text='Resize to Window',
@@ -121,7 +126,8 @@ class PyGrabCutter:
         self.label1.pack( side=tkinter.LEFT)
         self.fnameEntry.pack( side=tkinter.LEFT)
         self.button1.pack(side=tkinter.LEFT)
-        self.ResizeToWinButton.pack(side=tkinter.LEFT)
+        self.SaveImgButton.pack(side=tkinter.LEFT)
+        self.ResizeToWinButton.pack(side=tkinter.LEFT) # this is broken for now
 
         self.modeButtonFrame.pack()
         self.modeManager.pack()
@@ -136,14 +142,14 @@ class PyGrabCutter:
 
         self.dataInterface = DataSaver(self)
 
-        self.root.geometry("1000x600")
+        # self.root.geometry("1000x600")
 
         if fname is not None:
             self.root.update_idletasks()
             self.root.update()
             self.openImage(fname)
-        self.root.state('zoomed')
-        self.updateSize(None)
+        # self.root.state('zoomed')
+        # self.updateSize(None)
         self.root.mainloop()
 
     def openImage(self, fname:str):
@@ -152,14 +158,19 @@ class PyGrabCutter:
         self.beforeImage.LoadImage(fname)
         self.beforeImage.renderImg()
         # self.root.bind("<Configure>", self.updateSize)
+        self.fname.set(fname)
 
         assert self.beforeImage.cvimg is not None
         self.origImg = self.beforeImage.cvimg.copy()
         self.rect_or_mask = 0
 
         # self.beforeImage.onDrag(lambda event: print(f'clicked at {event}'))
-        self.beforeImage.onDrag(self.drawCB)
 
+        self.prevPT: Union[None, np.ndarray] = None
+        def resetPrevPt(event):
+            self.prevPT=None
+        self.beforeImage.onClick(resetPrevPt)
+        self.beforeImage.onDrag(self.drawCB)
 
     def selectImage(self):
         fname: str = filedialog.askopenfilename(
@@ -189,40 +200,85 @@ class PyGrabCutter:
         self.afterImage.renderImg()
         self.beforeImage.renderImg()
 
-    def saveGeom(self):
+    def saveImgOutput(self):
+        assert self.afterImage.cvmask is not None
         fname: str = filedialog.asksaveasfilename(
-            filetypes=[("Json File", ('*.json'))])
+            filetypes=[("PNG File", ('*.png'))])
+
         if (type(fname) is str) and (len(fname) > 0):
-            toJson(fname, self.dataInterface.toDict())
+            rgba = cv2.cvtColor(self.origImg, cv2.COLOR_RGB2RGBA)
+
+            # where mask is 3 or 1 is 255 else 0
+            rgba[:, :, 3] = np.where(
+                    (self.afterImage.cvmask==3) + (self.afterImage.cvmask==1),255,0).astype('uint8')
+
+            # np.savetxt('mask.csv', np.array(rgba[:, :, 3], dtype=int))
+
+            cv2.imwrite(f'{fname}_mask.png', rgba[:, :, 3])
+
+            if fname[-4:] != '.png':
+                fname = f'{fname}.png'
+            cv2.imwrite(f'{fname}', rgba)
+            print(" Result saved as image \n")
 
     def drawCB(self, event):
+        '''
+        '''
+
+        # disable Drag Handler for a bit
+        self.beforeImage.canvas.unbind_all('<B1-Motion>')
+
         view_coords = np.array([event.x,event.y], dtype=int)
+        __prevPT = self.prevPT
         coords = np.array(view_coords/self.beforeImage.scale, dtype=int)
+        self.prevPT = coords
         color = np.array([255,255,255], dtype=int)
-        print(self.modeManager.get())
-        col = (color*self.modeManager.get()).tolist()
-        print(col, col == [0,0,0])
-        cv2.circle(
-                self.beforeImage.cvimg,
-                tuple(coords),
-                3,
-                # [0,0,0],
-                col,
-                -1)
-        self.beforeImage.renderImg()
+
+        mode = int(self.modeManager.get())  # 0 when bg, 1 when fg marking mode
+
+        print(f'mark mode: {"bg" if mode==0 else "fg" }')
+        col = (color*mode).tolist()  # should basically be [255,255,255] or [0,0,0]
+        linewidth = 3
 
         cv2.circle(
-                self.afterImage.cvmask,
+            self.beforeImage.cvimg,
+            tuple(coords),
+            linewidth,
+            col,
+            -1)
+
+        cv2.circle(
+            self.afterImage.cvmask,
+            tuple(coords),
+            linewidth,
+            int(1*mode),
+            -1)
+
+        if __prevPT is not None:
+            cv2.line(
+                self.beforeImage.cvimg,
+                tuple(__prevPT),
                 tuple(coords),
-                3,
-                int(1*self.modeManager.get()),
-                -1)
+                col,
+                linewidth)
+            cv2.line(
+                self.afterImage.cvmask,
+                tuple(__prevPT),
+                tuple(coords),
+                int(1*mode),
+                linewidth)
+
+        self.beforeImage.renderImg()
+
+        # reenable Drag Handler
+        self.beforeImage.onDrag(self.drawCB)
 
     def grabAndCut(self):
         assert self.origImg is not None
         assert self.afterImage.cvmask is not None
-        rect = [0,0,1,1]
-        rect = (15, 137, 986, 338) # need to set rect
+        shp=self.afterImage.cvmask.shape
+        rect = [0,0,shp[1]-1,shp[0]-1]
+        # rect = (15, 137, 986, 338) # need to set rect
 
         print(self.origImg.shape)
         print(self.afterImage.cvmask.shape)
@@ -291,11 +347,11 @@ class ImgCanvas:
             self.root.root.winfo_screenheight()
         ], dtype=int) * 0.8
         
-        self.screengeom = array([
-            self.root.root.winfo_height()*0.45,
-            self.root.root.winfo_width()*0.45
-            ], dtype=int)
-        self.sceengeom = array([self.canvas.winfo_width(), self.canvas.winfo_height()], dtype=int)
+        # self.screengeom = array([
+        #     self.root.root.winfo_height()*0.45,
+        #     self.root.root.winfo_width()*0.45
+        #     ], dtype=int)
+        # self.sceengeom = array([self.canvas.winfo_width(), self.canvas.winfo_height()], dtype=int)
 
         self.igeom = self.cvimg.shape[1::-1]
         print(self.igeom)
@@ -340,8 +396,8 @@ class ImgCanvas:
             self.tag, text='({x}, {y})'.format(x=event.x, y=event.y))
 
     def pack(self) -> None:
-        # return self.canvas.pack(side=tkinter.TOP)
-        return self.canvas.pack(fill="both", expand=True)
+        return self.canvas.pack(side=tkinter.TOP)
+        # return self.canvas.pack(fill="both", expand=True)
 
     def __init__(self, name: str, root: PyGrabCutter, parent: ttk.Frame):
         self.name = name
@@ -381,59 +437,6 @@ class ModeManager:
         self.mode = tkinter.IntVar()
 
         self.__defButtons()
-
-class DandDhandler:
-    def onClick(self, event):
-        assert self.parent.canvas is not None
-
-        x = event.x
-        y = event.y
-
-        # クリックされた位置に一番近い図形のID取得
-        self.GrabbedObj = self.parent.canvas.find_closest(x, y)
-
-        # マウスの座標を記憶
-        self.before_x = x
-        self.before_y = y
-
-        self.clickHook(self.GrabbedObj)
-
-    def onDrag(self, event):
-        assert self.parent.canvas is not None
-        global before_x, before_y
-
-        x = event.x
-        y = event.y
-
-        # 前回からのマウスの移動量の分だけ図形も移動
-        self.parent.canvas.move(
-            self.GrabbedObj,
-            x - self.before_x, y - self.before_y
-        )
-
-        # マウスの座標を記憶
-        self.before_x = x
-        self.before_y = y
-
-        self.dragHook(self.GrabbedObj)
-
-    def onDrop(self, event):
-        _ = event
-        self.GrabbedObj = None
-
-        self.dropHook(self.GrabbedObj)
-
-    def __init__(
-            self,
-            parent: PyGrabCutter,
-            onClick=dummyHook,
-            onDrag=dummyHook,
-            onDrop=dummyHook
-    ):
-        self.parent = parent
-        self.clickHook = onClick
-        self.dragHook = onDrag
-        self.dropHook = onDrop
 
 
 class DataSaver:
