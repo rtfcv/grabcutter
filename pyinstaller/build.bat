@@ -3,6 +3,9 @@ WHERE pyinstaller.exe || (
     @echo PYINSTALLER NOT FOUND
     exit
 )
+
+RMDIR /S /Q dist
+
 @echo on
 python.exe -mvenv tmpEnv
 .\tmpEnv\Scripts\pip.exe install -U -r .\requirements.txt
@@ -15,3 +18,5 @@ pyinstaller.exe ^
 
 .\tmpEnv\Scripts\pip.exe freeze
 RMDIR /S /Q tmpEnv
+
+7z a .\dist\grabcutter.zip .\dist\grabcutter
