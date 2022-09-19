@@ -17,7 +17,7 @@ base = None
 if sys.platform == 'win32':  # for GUI app
     base = 'Win32GUI'
 
-exe = Executable(script=path(['..','src','grabcutter','main.py']),
+exe = Executable(script=path(['..','src','grabcutter','grabcutter.py']),
                  base=base)
 
 opts = {
@@ -32,8 +32,8 @@ opts = {
             'numpy.lib.format',
             ],
         'include_files':[
-            os.path.join(PYTHON_INSTALL_DIR, 'Library', 'bin', 'tk86t.dll'),
-            os.path.join(PYTHON_INSTALL_DIR, 'Library', 'bin', 'tcl86t.dll')
+            # os.path.join(PYTHON_INSTALL_DIR, 'Library', 'bin', 'tk86t.dll'),
+            # os.path.join(PYTHON_INSTALL_DIR, 'Library', 'bin', 'tcl86t.dll')
             # "tcl86t.dll",
             # "tk86t.dll",
          ],
@@ -43,7 +43,8 @@ opts = {
     },
     'install_exe': {
         'install_dir':
-            os.environ['HOMEPATH'] + r'\AppData\Local\grabcutter\bin',
+        '~/misc/',
+            # os.environ['HOMEPATH'] + r'\AppData\Local\grabcutter\bin',
     },
 }
 
